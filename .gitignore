@@ -3,9 +3,10 @@ data/
 *.jsonl
 
 # Trained models (large files, user-specific)
-models/
-*.pth
-*.mlmodel
+# Exclude checkpoints but allow main model for deployment
+models/patchtst_checkpoint_*.pth
+models/*.mlmodel
+# Allow main model: models/patchtst_crypto.pth (for deployment)
 
 # Python cache
 __pycache__/
