@@ -7,6 +7,8 @@ from typing import Dict
 import os
 import subprocess
 import platform
+import requests
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_IDS, TELEGRAM_ENABLED
 
 
 class AlertHandler:
@@ -37,8 +39,14 @@ class AlertHandler:
             # Trigger system alert with sound for BOTH STRONG BUY and STRONG SELL
             if "STRONG BUY" in signal_type:
                 self._trigger_system_alert(symbol, signal_type, price, signal_details['predicted_change_pct'], is_buy=True)
+                # Send Telegram notification
+                self._send_telegram_alert(symbol, timeframe, signal_type, signal_strength, 
+                                         velocity, change_pct, price, signal_details)
             elif "STRONG SELL" in signal_type:
                 self._trigger_system_alert(symbol, signal_type, price, signal_details['predicted_change_pct'], is_buy=False)
+                # Send Telegram notification
+                self._send_telegram_alert(symbol, timeframe, signal_type, signal_strength, 
+                                         velocity, change_pct, price, signal_details)
         else:
             print(f"   {signal_type} - {signal_strength}")
         
@@ -101,5 +109,75 @@ class AlertHandler:
                 
         except Exception as e:
             # Silently fail if notification fails (don't interrupt main flow)
+            pass
+    
+    def _send_telegram_alert(self, symbol: str, timeframe: int, signal_type: str, 
+                             signal_strength: str, velocity: float, change_pct: float, 
+                             price: float, signal_details: Dict):
+        """
+        Send Telegram notification for STRONG BUY/SELL signals
+        
+        Args:
+            symbol: Cryptocurrency symbol (e.g., 'BTC')
+            timeframe: Timeframe in minutes
+            signal_type: Signal type (e.g., 'STRONG BUY 🚀')
+            signal_strength: Signal strength (e.g., 'VERY STRONG')
+            velocity: Price velocity
+            change_pct: Current price change percentage
+            price: Current price
+            signal_details: Dictionary with all signal details
+        """
+        if not TELEGRAM_ENABLED:
+            return
+        
+        try:
+            # Format Telegram message
+            emoji = "🚀" if "BUY" in signal_type else "🔻"
+            message = f"{emoji} *{signal_type}*\n"
+            message += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            message += f"💰 *{symbol}/USDT*\n"
+            message += f"⏱ Timeframe: {timeframe}min\n"
+            message += f"💵 Price: `${price:,.4f}`\n"
+            message += f"📈 Change: `{change_pct:+.3f}%`\n\n"
+            
+            message += f"*📊 Indicators:*\n"
+            message += f"• Velocity: `{velocity:+.4f} %/min`\n"
+            message += f"• Momentum: `{signal_details['momentum']:+.4f}`\n"
+            message += f"• Trend: `{signal_details['trend_strength']*100:.1f}%`\n"
+            message += f"• RSI: `{signal_details['rsi']:.2f}`\n\n"
+            
+            message += f"*🔮 AI Prediction (5min):*\n"
+            message += f"• Predicted: `${signal_details['predicted_price']:,.4f}`\n"
+            message += f"• Change: `{signal_details['predicted_change_pct']:+.3f}%`\n"
+            message += f"• Confidence: `{signal_details['prediction_confidence']*100:.1f}%`\n"
+            
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            message += f"\n_Time: {timestamp}_"
+            
+            # Send to all configured chat IDs
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            
+            for chat_id in TELEGRAM_CHAT_IDS:
+                payload = {
+                    "chat_id": chat_id,
+                    "text": message,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True
+                }
+                
+                response = requests.post(url, json=payload, timeout=5)
+                
+                if response.status_code == 200:
+                    # Success - message sent
+                    pass
+                else:
+                    # Log error but don't interrupt main flow
+                    print(f"⚠️  Telegram send failed for chat {chat_id}: {response.status_code}")
+                    
+        except requests.exceptions.RequestException as e:
+            # Network error - silently fail
+            pass
+        except Exception as e:
+            # Any other error - silently fail
             pass
 

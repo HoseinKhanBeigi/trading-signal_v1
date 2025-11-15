@@ -57,3 +57,10 @@ ADX_PERIOD = 14
 EMA_FAST = 9
 EMA_SLOW = 21
 
+# Telegram Bot settings
+# SECURITY NOTE: Keep your bot token secure. Don't share it publicly.
+# To get your chat ID, message @userinfobot on Telegram
+TELEGRAM_BOT_TOKEN = "7909173256:AAF9M8mc0QYmtO9SUYQPv6XkrPkAz2P_ImU"
+TELEGRAM_CHAT_IDS = [193418752]  # List of chat IDs to send alerts to
+TELEGRAM_ENABLED = True  # Set to False to disable Telegram notifications
+
