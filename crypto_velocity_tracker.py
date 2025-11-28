@@ -181,12 +181,27 @@ class CryptoVelocityTracker:
                                 pred = details.get("predicted_change_pct", 0.0)
                                 conf = details.get("prediction_confidence", 0.0)
                                 sig = data.get("signal", "")
-                                print(f"[{symbol} {timeframe}m] "
-                                      f"vel={velocity:+.4f}%/min "
-                                      f"chg={change_pct:+.3f}% "
-                                      f"sig={sig} "
-                                      f"pred={pred:+.3f}% "
-                                      f"conf={conf*100:.1f}%")
+                                strength = data.get("signal_strength", "")
+                                # Highlight STRONG SELL in red-like formatting
+                                if "STRONG SELL" in sig:
+                                    print(f"[{symbol} {timeframe}m] ⚠️  STRONG SELL 🔻 "
+                                          f"vel={velocity:+.4f}%/min "
+                                          f"chg={change_pct:+.3f}% "
+                                          f"pred={pred:+.3f}% "
+                                          f"conf={conf*100:.1f}%")
+                                elif "SELL" in sig:
+                                    print(f"[{symbol} {timeframe}m] SELL 📉 "
+                                          f"vel={velocity:+.4f}%/min "
+                                          f"chg={change_pct:+.3f}% "
+                                          f"pred={pred:+.3f}% "
+                                          f"conf={conf*100:.1f}%")
+                                else:
+                                    print(f"[{symbol} {timeframe}m] "
+                                          f"vel={velocity:+.4f}%/min "
+                                          f"chg={change_pct:+.3f}% "
+                                          f"sig={sig} "
+                                          f"pred={pred:+.3f}% "
+                                          f"conf={conf*100:.1f}%")
                             # Check and alert for 3min timeframe only
                             if timeframe == 3:
                                 self.check_and_alert(symbol, timeframe, velocity, change_pct, current_price)

@@ -200,7 +200,7 @@ class SignalGenerator:
             return "STRONG BUY 🚀", "VERY STRONG", signal_details
         elif total_score > self.weak_threshold and confirmations >= 2:
             return "BUY 📈", "WEAK", signal_details
-        elif total_score < -self.strong_threshold and bearish_signals >= 4 and price_prediction["predicted_change_pct"] < 0:
+        elif total_score < -self.strong_threshold and bearish_signals >= 3 and price_prediction["predicted_change_pct"] < 0:
             return "STRONG SELL 🔻", "VERY STRONG", signal_details
         elif total_score < -self.weak_threshold and bearish_signals >= 2:
             return "SELL 📉", "WEAK", signal_details
