@@ -12,6 +12,7 @@ from data_collector import DataCollector
 from price_tracker import PriceTracker
 from indicators import TechnicalIndicators
 from price_prediction import PricePredictor
+from config import PREDICTION_MINUTES_AHEAD
 
 
 class HistoricalDataCollector:
@@ -43,22 +44,14 @@ class HistoricalDataCollector:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             return response.json()
-        except Exception as e:
-            print(f"Error fetching historical data for {symbol}: {e}")
+        except Exception:
             return []
     
     def process_historical_data(self, symbol: str, days_back: int = 7, 
                                 end_time: int = None):
         """
         Process historical data and generate training features
-        
-        Args:
-            symbol: Cryptocurrency symbol
-            days_back: How many days of historical data to fetch
-            end_time: End time in milliseconds (optional, for batch collection)
         """
-        print(f"Collecting historical data for {symbol}...")
-        
         # Fetch historical klines (1-minute intervals)
         # Each day = 1440 minutes, so for many days we need multiple requests
         # Binance API limit: 1000 klines per request
@@ -89,7 +82,6 @@ class HistoricalDataCollector:
                 time.sleep(0.2)  # Rate limiting
         
         if len(klines) < 100:
-            print(f"Not enough data for {symbol}. Got {len(klines)} klines.")
             return
         
         # Reverse klines to get chronological order (oldest first)
@@ -107,10 +99,6 @@ class HistoricalDataCollector:
             # Filter klines to only include those from the target day
             original_count = len(klines)
             klines = [k for k in klines if start_timestamp <= k[0] <= end_time]
-            if len(klines) < original_count:
-                print(f"Filtered to {len(klines)} klines for the target day (from {original_count} total)")
-        
-        print(f"Fetched {len(klines)} klines for {symbol}")
         
         # Process klines into prices
         prices = []
@@ -149,12 +137,13 @@ class HistoricalDataCollector:
         }
         
         # Now process data starting from index where we have enough history
-        # Need at least 60 data points for indicators, plus 5 for target
+        # Need at least 60 data points for indicators, plus horizon for target
         # Since prices is in chronological order (oldest first), prices[0] = oldest, prices[-1] = newest
         # We process in FORWARD order (oldest to newest) to collect all data
         start_idx = max(60, 20)  # Start after we have some history
         # Process from oldest to newest (forward through array: start to end)
-        for i in range(start_idx, len(prices) - 5):
+        horizon = max(1, int(PREDICTION_MINUTES_AHEAD))
+        for i in range(start_idx, len(prices) - horizon):
             try:
                 # Get current price and time
                 current_price = prices[i]
@@ -206,9 +195,10 @@ class HistoricalDataCollector:
                     'current_price': current_price
                 }
                 
-                # Calculate target (actual price change 5 minutes later)
-                if i + 5 < len(prices):
-                    future_price = prices[i + 5]
+                # Calculate target (actual price change N minutes later where N = PREDICTION_MINUTES_AHEAD)
+                idx_future = i + horizon
+                if idx_future < len(prices):
+                    future_price = prices[idx_future]
                     target_change = ((future_price - current_price) / current_price) * 100
                 else:
                     continue  # Skip if we can't calculate target
@@ -244,18 +234,15 @@ class HistoricalDataCollector:
                                 existing_timestamps.add(data.get('timestamp', ''))
                             except:
                                 pass
-        except Exception as e:
-            print(f"  Warning: Could not check for duplicates: {e}")
+        except Exception:
+            # Ignore duplicate-scan errors silently
+            pass
         
         # Now save all samples in REVERSE order (newest first, going backwards)
         # This gives us: today → yesterday → ... (newest to oldest)
         # samples_to_save is in chronological order (oldest first), so we reverse it
         training_samples = []
         reversed_samples = list(reversed(samples_to_save))
-        if reversed_samples:
-            print(f"  First sample timestamp: {reversed_samples[0][2]} (should be NEWEST)")
-            print(f"  Last sample timestamp: {reversed_samples[-1][2]} (should be OLDEST)")
-        
         skipped_duplicates = 0
         for features, target_change, price_timestamp in reversed_samples:
             # Skip if this timestamp already exists
@@ -277,33 +264,16 @@ class HistoricalDataCollector:
             existing_timestamps.add(price_timestamp)
             training_samples.append((features, target_change))
         
-        if skipped_duplicates > 0:
-            print(f"  ⚠️  Skipped {skipped_duplicates} duplicate timestamps (already exist in file)")
-        
-        if skipped_count > 0:
-            print(f"  Skipped {skipped_count} samples (velocity: {error_counts['velocity']}, "
-                  f"ema: {error_counts['ema']}, indicators: {error_counts['indicators']}, "
-                  f"other: {error_counts['other']})")
-        
-        print(f"Generated {len(training_samples)} training samples for {symbol}")
         return training_samples
     
     def collect_for_all_symbols(self, symbols: List[str], days_back: int = 7):
         """Collect historical data for all symbols"""
-        print(f"\n{'='*60}")
-        print(f"Collecting {days_back} days of historical data")
-        print(f"{'='*60}\n")
-        
         total_samples = 0
         for symbol in symbols:
             samples = self.process_historical_data(symbol, days_back)
             if samples:
                 total_samples += len(samples)
             time.sleep(1)  # Rate limiting between symbols
-        
-        print(f"\n{'='*60}")
-        print(f"Total training samples collected: {total_samples}")
-        print(f"{'='*60}\n")
         
         return total_samples
     
@@ -317,14 +287,6 @@ class HistoricalDataCollector:
             batch_days: Number of days per batch (default: 7)
             num_batches: Number of batches to collect (default: 30 = 210 days)
         """
-        print(f"\n{'='*60}")
-        print(f"BATCH COLLECTION MODE")
-        print(f"{'='*60}")
-        print(f"Batch size: {batch_days} days")
-        print(f"Number of batches: {num_batches}")
-        print(f"Total days: {batch_days * num_batches} days")
-        print(f"{'='*60}\n")
-        
         total_samples = 0
         
         # Process batches in FORWARD order: Batch 1 (newest) first, then Batch 2, etc.
@@ -339,39 +301,19 @@ class HistoricalDataCollector:
             days_back_from_now = (batch_num - 1) * batch_days
             end_time = int((datetime.now() - timedelta(days=days_back_from_now)).timestamp() * 1000)
             
-            print(f"\n{'='*60}")
-            print(f"BATCH {batch_num}/{num_batches}")
-            print(f"Collecting {batch_days} days of data")
             end_date = datetime.fromtimestamp(end_time / 1000)
-            print(f"End time: {end_date.strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Collecting data from {days_back_from_now} to {days_back_from_now + batch_days} days ago")
-            print(f"{'='*60}\n")
             
             batch_samples = 0
             for symbol in symbols:
-                print(f"\n[{symbol}] Batch {batch_num}/{num_batches}...")
                 samples = self.process_historical_data(symbol, batch_days, end_time)
                 if samples:
                     batch_samples += len(samples)
                     total_samples += len(samples)
                 time.sleep(1)  # Rate limiting between symbols
             
-            print(f"\nBatch {batch_num} complete: {batch_samples:,} samples")
-            
-            # Progress update
-            progress = (batch_num / num_batches) * 100
-            print(f"Overall progress: {progress:.1f}% ({batch_num}/{num_batches} batches)")
-            print(f"Total samples so far: {total_samples:,}")
-            
             if batch_num < num_batches:
-                print(f"\nWaiting 2 seconds before next batch...")
                 time.sleep(2)
-        
-        print(f"\n{'='*60}")
-        print(f"✅ ALL BATCHES COMPLETE!")
-        print(f"Total training samples collected: {total_samples:,}")
-        print(f"{'='*60}\n")
-        
+
         return total_samples
 
 
@@ -396,13 +338,6 @@ def collect_single_day(symbols: List[str], days_ago: int = 0):
         end_of_day = start_of_day.replace(hour=23, minute=59, second=59)
     
     day_name = "today" if days_ago == 0 else f"{days_ago} day(s) ago"
-    print(f"\n{'='*60}")
-    print(f"Collecting data for {day_name}")
-    print(f"Date: {start_of_day.strftime('%Y-%m-%d')}")
-    print(f"From: {start_of_day.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"To: {end_of_day.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}\n")
-    
     # Use end_time as the end of the day (in milliseconds)
     end_time = int(end_of_day.timestamp() * 1000)
     
@@ -412,18 +347,12 @@ def collect_single_day(symbols: List[str], days_ago: int = 0):
     
     total_samples = 0
     for symbol in symbols:
-        print(f"\n[{symbol}] Collecting data for {start_of_day.strftime('%Y-%m-%d')}...")
         # Fetch data ending at end_of_day, going back 1 day
         # But we'll limit it to just that day by using end_time
         samples = collector.process_historical_data(symbol, days_back=1, end_time=end_time)
         if samples:
             total_samples += len(samples)
-            print(f"  ✅ Collected {len(samples)} samples for {symbol}")
         time.sleep(1)  # Rate limiting between symbols
-    
-    print(f"\n{'='*60}")
-    print(f"✅ Complete! Collected {total_samples:,} total samples for {day_name}")
-    print(f"{'='*60}\n")
     
     return total_samples
 
@@ -434,48 +363,14 @@ def main():
     from config import SYMBOLS
     
     collector = HistoricalDataCollector()
-    
     # Check if user wants to collect a single day
     if len(sys.argv) > 1:
         try:
             days_ago = int(sys.argv[1])
-            print(f"\n{'='*60}")
-            print(f"MANUAL DAY-BY-DAY COLLECTION MODE")
-            print(f"{'='*60}")
-            print(f"\nCollecting data for: ", end="")
-            if days_ago == 0:
-                print("TODAY")
-            elif days_ago == 1:
-                print("YESTERDAY")
-            else:
-                print(f"{days_ago} DAYS AGO")
-            print(f"\nUsage:")
-            print(f"  python3 historical_data_collector.py 0   # Today")
-            print(f"  python3 historical_data_collector.py 1   # Yesterday")
-            print(f"  python3 historical_data_collector.py 2   # 2 days ago")
-            print(f"  etc...")
-            print(f"{'='*60}\n")
-            
             collect_single_day(SYMBOLS, days_ago=days_ago)
-            print("\n✅ Done! Run again with a different number to collect another day.")
-            print("Example: python3 historical_data_collector.py 1  (for yesterday)")
             return
         except ValueError:
-            print(f"Error: '{sys.argv[1]}' is not a valid number.")
-            print("Usage: python3 historical_data_collector.py <days_ago>")
-            print("  days_ago: 0 = today, 1 = yesterday, 2 = 2 days ago, etc.")
             return
-    
-    # Default: Choose collection mode
-    print("=" * 60)
-    print("HISTORICAL DATA COLLECTION")
-    print("=" * 60)
-    print("\nChoose collection mode:")
-    print("1. Single day (manual - day by day)")
-    print("   Usage: python3 historical_data_collector.py 0   # Today")
-    print("          python3 historical_data_collector.py 1   # Yesterday")
-    print("2. Batch mode (collect 7 days at a time, going back)")
-    print("\n" + "=" * 60)
     
     # For now, use batch mode by default
     use_batch_mode = True
@@ -484,29 +379,12 @@ def main():
         # Batch mode: Collect 7 days at a time, going further back
         batch_days = 7  # 7 days per batch
         num_batches = 30  # 30 batches = 210 days (7 months)
-        
-        print(f"\nBATCH MODE:")
-        print(f"  Batch size: {batch_days} days")
-        print(f"  Number of batches: {num_batches}")
-        print(f"  Total: {batch_days * num_batches} days ({num_batches * batch_days // 30} months)")
-        print(f"\nThis will collect data in {num_batches} batches of {batch_days} days each.")
-        print(f"Each batch goes 7 days further back in time.")
-        print(f"This may take 15-20 minutes...\n")
-        
         collector.collect_in_batches(SYMBOLS, batch_days=batch_days, num_batches=num_batches)
     else:
         # Single batch mode (original)
         days = 210  # 7 months
-        print(f"\nSINGLE BATCH MODE:")
-        print(f"This will collect {days} days ({days//30} months) of historical data.")
-        print(f"This may take 10-15 minutes...\n")
         collector.collect_for_all_symbols(SYMBOLS, days_back=days)
     
-    print("\n✅ Historical data collection complete!")
-    print("You can now train the AI model with this data.")
-    print("Run: python3 train_model.py")
-
-
 if __name__ == "__main__":
     main()
 

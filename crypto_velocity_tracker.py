@@ -12,7 +12,7 @@ from signal_generator import SignalGenerator
 from websocket_handler import WebSocketHandler
 from alert_handler import AlertHandler
 from data_collector import DataCollector
-from config import COLLECT_DATA, COLLECT_PRICES, COLLECT_FEATURES, COLLECT_SIGNALS
+from config import COLLECT_DATA, COLLECT_PRICES, COLLECT_FEATURES, COLLECT_SIGNALS, DEBUG_RUNTIME
 
 
 class CryptoVelocityTracker:
@@ -156,13 +156,13 @@ class CryptoVelocityTracker:
                 })
     
     def _signal_check_loop(self, check_interval: float = 1.0):
-        """Check for signals in background - only prints alerts, no dashboard"""
+        """Check for signals in background - alerts only (plus optional debug output)"""
         while self.running:
             try:
                 with self.lock:
                     results = self.get_all_velocities()
                 
-                # Check for signals and alert (only prints when signal detected)
+                # Check for signals and alert
                 for symbol in self.symbols:
                     current_price = self.current_prices.get(symbol)
                     if current_price is None:
@@ -175,13 +175,26 @@ class CryptoVelocityTracker:
                         velocity = data.get("velocity")
                         if velocity is not None:
                             change_pct = data.get("change_percent", 0.0)
+                            # Optional debug line for 3min timeframe
+                            if DEBUG_RUNTIME and timeframe == 3:
+                                details = data.get("signal_details", {}) or {}
+                                pred = details.get("predicted_change_pct", 0.0)
+                                conf = details.get("prediction_confidence", 0.0)
+                                sig = data.get("signal", "")
+                                print(f"[{symbol} {timeframe}m] "
+                                      f"vel={velocity:+.4f}%/min "
+                                      f"chg={change_pct:+.3f}% "
+                                      f"sig={sig} "
+                                      f"pred={pred:+.3f}% "
+                                      f"conf={conf*100:.1f}%")
                             # Check and alert for 3min timeframe only
                             if timeframe == 3:
                                 self.check_and_alert(symbol, timeframe, velocity, change_pct, current_price)
                 
                 time.sleep(check_interval)
-            except Exception as e:
-                print(f"Error in signal check loop: {e}")
+            except Exception:
+                # Silently ignore loop errors
+                pass
     
     def run_continuous(self, check_interval: float = 1.0):
         """
@@ -190,14 +203,6 @@ class CryptoVelocityTracker:
         Args:
             check_interval: Signal check interval in seconds (default: 1.0 second)
         """
-        print(f"Starting WebSocket-based signal tracker...")
-        print(f"Symbols: {', '.join(self.symbols)}")
-        print(f"Timeframes: {', '.join([f'{tf}min' for tf in self.timeframes])}")
-        print(f"Signal Thresholds: Weak={self.weak_threshold} %/min | Strong={self.strong_threshold} %/min")
-        print("Connecting to Binance WebSocket...")
-        print("Waiting for signals... (only alerts will be shown)\n")
-        print("Press Ctrl+C to stop\n")
-        
         self.running = True
         
         # Start signal checking thread (only prints alerts, no dashboard)
@@ -209,10 +214,7 @@ class CryptoVelocityTracker:
             self.ws_handler.connect()
             
         except KeyboardInterrupt:
-            print("\n\nStopping tracker...")
             self.running = False
             self.ws_handler.close()
-            print(f"Total signals detected: {self.alert_handler.signal_count}")
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception:
             self.running = False

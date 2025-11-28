@@ -41,22 +41,23 @@ class WebSocketHandler:
                 
                 if symbol in self.symbols:
                     self.on_price_update(symbol, price, event_time)
-        except Exception as e:
-            print(f"Error processing WebSocket message: {e}")
+        except Exception:
+            # Silently ignore malformed messages
+            pass
     
     def _on_error(self, ws, error):
         """Handle WebSocket errors"""
-        print(f"WebSocket error: {error}")
+        # Suppress console logging; errors can be handled by caller if needed
+        _ = error
     
     def _on_close(self, ws, close_status_code, close_msg):
         """Handle WebSocket close"""
-        print("\nWebSocket connection closed")
         self.running = False
     
     def _on_open(self, ws):
         """Handle WebSocket open"""
-        print("WebSocket connected successfully!")
-        print(f"Subscribed to: {', '.join([f'{s}/USDT' for s in self.symbols])}")
+        # No console output
+        return
     
     def connect(self):
         """Connect to WebSocket"""

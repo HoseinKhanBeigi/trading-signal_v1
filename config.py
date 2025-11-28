@@ -3,7 +3,9 @@ Configuration settings for the crypto signal tracker
 """
 
 # Cryptocurrency symbols to track
-SYMBOLS = ['BTC', 'ETH', 'DOGE', 'XRP']
+SYMBOLS = [
+    'BTC', 'ETH', 'BNB', 'SOL', 'XRP'
+]
 
 # Timeframes in minutes
 TIMEFRAMES = [3]  # 3 minutes only
@@ -32,7 +34,7 @@ BINANCE_WS_URL = "wss://stream.binance.com:9443/stream"
 # Technical indicator settings
 RSI_PERIOD = 14
 EMA_PERIOD = 9
-PREDICTION_MINUTES_AHEAD = 5
+PREDICTION_MINUTES_AHEAD = 15  # Predict 15 minutes ahead
 
 # MACD settings
 MACD_FAST = 12
@@ -56,6 +58,9 @@ ADX_PERIOD = 14
 # EMA Crossover settings
 EMA_FAST = 9
 EMA_SLOW = 21
+
+# Debug / logging
+DEBUG_RUNTIME = True  # Set to True to see realtime console debug for processing & signals
 
 # Telegram Bot settings
 # SECURITY NOTE: Keep your bot token secure. Don't share it publicly.

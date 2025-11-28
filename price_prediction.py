@@ -35,8 +35,7 @@ class PricePredictor:
         # Initialize AI predictor for feature preparation (needed even when use_ai=False)
         try:
             self.ai_predictor = AIPredictor()
-        except Exception as e:
-            print(f"Could not initialize AI predictor: {e}. Feature preparation may fail.")
+        except Exception:
             self.ai_predictor = None
             if use_ai:
                 self.use_ai = False
@@ -109,8 +108,8 @@ class PricePredictor:
                             "minutes_ahead": minutes_ahead,
                             "method": "ai"
                         }
-            except Exception as e:
-                print(f"AI prediction failed: {e}. Using rule-based.")
+            except Exception:
+                pass
         
         # Fallback to rule-based prediction
         return self._rule_based_prediction(

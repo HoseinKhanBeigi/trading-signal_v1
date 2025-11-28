@@ -43,8 +43,8 @@ class DataCollector:
             try:
                 with open(filename, 'a') as f:
                     f.write(json.dumps(data) + '\n')
-            except Exception as e:
-                print(f"Error saving price data: {e}")
+            except Exception:
+                pass
     
     def save_feature_sequence(self, symbol: str, features: List, 
                               target_price_change: float = None, 
@@ -65,8 +65,7 @@ class DataCollector:
         
         try:
             converted_features = convert_to_list(features)
-        except Exception as e:
-            print(f"Error converting features: {e}")
+        except Exception:
             return
         
         # Use provided timestamp or create one (rounded to minutes)
@@ -85,8 +84,8 @@ class DataCollector:
             try:
                 with open(filename, 'a') as f:
                     f.write(json.dumps(data) + '\n')
-            except Exception as e:
-                print(f"Error saving feature data: {e}")
+            except Exception:
+                pass
     
     def save_signal(self, symbol: str, signal_data: Dict):
         """Save signal data"""
@@ -102,8 +101,8 @@ class DataCollector:
             try:
                 with open(filename, 'a') as f:
                     f.write(json.dumps(data) + '\n')
-            except Exception as e:
-                print(f"Error saving signal data: {e}")
+            except Exception:
+                pass
     
     def get_collected_data_stats(self) -> Dict:
         """Get statistics about collected data"""
@@ -152,8 +151,8 @@ class DataCollector:
         return stats
     
     def load_training_data(self, symbol: str, min_sequences: int = 60) -> List:
-        """Load training data from files and create sequences"""
-        filename = f"{self.data_dir}/features/{symbol.lower()}_features.jsonl"
+        """Load training data from 15-minute target feature files and create sequences"""
+        filename = f"{self.data_dir}/features/{symbol.lower()}_features_15m.jsonl"
         
         if not os.path.exists(filename):
             return []
@@ -179,8 +178,7 @@ class DataCollector:
                         # If first element is a list, it's already a sequence
                         elif isinstance(features[0], list) and len(features) >= min_sequences:
                             training_data.append((features, target))
-        except Exception as e:
-            print(f"Error loading training data: {e}")
+        except Exception:
             return []
         
         # Create sequences from individual feature vectors
